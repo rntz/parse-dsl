@@ -319,9 +319,12 @@
 (module+ calc
   (provide (all-defined-out))
 
-  (define :atom (p/alt :number))
+  (define :atom :number)
 
-  (define (:expr-at prec) ((p/ops :atom op-table) prec))
+  (define :expr (p/delay (:expr-at 0)))
+  (define (:expr-at prec)
+    (p/alt (p/parens :expr)
+      ((p/ops :atom op-table) prec)))
 
   ;; op-parse: parser (int, Expr -> parser Expr)
   (define (infix-op func assoc parse)
@@ -335,9 +338,7 @@
           (infix-op - 'l (p/string "-")))
       7 (set
           (infix-op * 'l (p/string "*"))
-          (infix-op / 'l (p/string "/")))))
-
-  (define :expr (:expr-at 0)))
+          (infix-op / 'l (p/string "/"))))))
 
 
 ;;; ---------- Concrete syntax ----------
