@@ -1,0 +1,86 @@
+Names x ::=
+Exprs e ::= # just use racket expressions
+
+Patterns
+    p ::= x
+        | _
+        | {fp,*}            # record pattern
+        | "[" p,* "]"       # list pattern
+        | "[" p,* "|" p "]" # list pattern with tail
+
+Field patterns
+   fp ::= x | x : p
+
+Value parsers
+this is just monadic parser-combinator land!
+    v ::= {r}               # embeds a record parser r
+        | v "|" v           # alternation
+        | "[" v,* "]"       # concatenation into a list/tuple. not sure about this one.
+        | "[" v,* "|" v "]" # listing with tail
+        | e @ v             # function application (unary)
+        | e @ "(" v,* ")"   # function application (multi-argument)
+
+        # is this obsoleted by "r if e" form?
+        | v ? e             # result x of v if (e x)
+
+        # TODO: monadic pure, ap, bind, join
+        | pure v
+        | let p = v_1 in v_2
+        | case v_1 ("|" p -> v)*
+        | join v
+        | error e
+
+        # NB: requires unbounded lookahead!
+        # inline function application / let-binding
+        # eg. (x:int y:int [x + y])
+        | r "[" e "]"
+        | r -> e            # alternate syntax
+
+        # just gives back string matched
+        | regex(e)          # string matched by regex e
+        | regex(e_1, e_2)   # group e_2 of string matched by regex e_1
+
+Record parsers
+TODO: use patterns instead of variable names
+    r ::= p : v             # matches pattern p against result of v
+        | r_1 r_2           # take record-union of r_1, r_2; requires disjoint names
+        | r_1 "|" r_2       # r_1 & r_2 must define same set of names?
+        | r if e            # r if e holds (fields of r are bound in e)
+
+        # "iteration" of record r
+        # (x:int y:int)* parses "2 3 4 5" into {x: [2,4], y: [3,5]}
+        | r*
+
+Maybe two parser formats, an "auto-record" version and an auto-tuple version?
+
+xs:(a:int b:int)*
+
+a:int b:int [a + b]
+
+----------
+Problem: operator precedence
+
+----------
+Simple calculator:
+
+    digit = regex [0-9]
+    number = ds:digit* -> to_int(ds)
+
+    expr = number
+         | x:expr o:oper y:expr -> o(x,y)
+         | "(" e:expr ")" -> e
+
+    oper = + [(+)] | * [(*)] | - [(-)] | / [(/)]
+
+----------
+Idea: could base an entire language on parsing & pattern-matching
+parsing = study of pattern-matching on streams/lists
+arguments are given in *lists*
+
+even = 0 [ 0 ]
+     | Suc(Suc(x:even)) [ Suc(x) ]
+
+even {
+  0 -> 0
+  S(S(x:even)) -> S(x)
+}
