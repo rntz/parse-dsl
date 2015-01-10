@@ -319,12 +319,9 @@
 (module+ calc
   (provide (all-defined-out))
 
-  (define :atom :number)
-
   (define :expr (p/delay (:expr-at 0)))
-  (define (:expr-at prec)
-    (p/alt (p/parens :expr)
-      ((p/ops :atom op-table) prec)))
+  (define :atom (p/alt :number (p/parens :expr)))
+  (define (:expr-at prec) ((p/ops :atom op-table) prec))
 
   ;; op-parse: parser (int, Expr -> parser Expr)
   (define (infix-op func assoc parse)
