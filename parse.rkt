@@ -117,9 +117,9 @@
 ;;; ---------- Parser constructors ----------
 (define-syntax-rule (p/delay e) (lambda (s) (e s)))
 
-(define ((p/error msg) s)
+(define ((p/error msg . args) s)
   ;; for now, just a debugging aid, since we're using naive parser-combinators
-  (printf "parser error: ~v\n" msg)
+  (printf "parse error: ~a\n" (apply format msg args))
   empty-stream)
 
 (define p/record record-parser-parser)
@@ -194,7 +194,7 @@
   (define post (stream-drop n s))
   (if (equal? pre str)
     (stream (list (void) post))
-    ((p/error "did not match head of string") post)))
+    ((p/error "expected ~a" str_) post)))
 
 (define (p/between pre post p)
   (p/let _ pre (p/let x p (p/replace x post))))
@@ -224,18 +224,20 @@
 
 ;; parser Expr, optable Expr -> int -> parser Expr
 (define ((p/ops parse-prefix table) prec)
-  (p/let left-expr parse-prefix
+  (define (parse-rest left-expr)
     (p/option left-expr
       (p/sum
         (for/list ([(op-prec opers) table]
-                   #:when (<= prec op-prec)
-                   [(op op-assoc op-parse) opers])
+                    #:when (<= prec op-prec)
+                    [oper opers])
           (define new-prec
-            (match op-assoc
+            (match (op-assoc oper)
               ['l (+ 1 op-prec)]
               ['r op-prec]
               [#f (error "nonassociativity unimplemented")]))
-          (p/let post op-parse (post new-prec left-expr)))))))
+          (p/bind (p/let post (op-parse oper) (post new-prec left-expr))
+            parse-rest)))))
+  (p/let left-expr parse-prefix (parse-rest left-expr)))
 
 
 ;;; ---------- Record parser constructors ----------
@@ -299,6 +301,8 @@
 
 
 ;;; ---------- Some convenient builtin parsers ----------
+;;; naming convention: parsers begin with ":"
+
 (define :ident-start (p/satisfy char-alphabetic?))
 (define :ident-mid
   (p/satisfy
@@ -308,10 +312,32 @@
     :ident-start (p/many :ident-mid)))
 
 (define :digit (p/satisfy char-numeric?))
-(define :number (p/map (compose string->number list->string) (p/many :digit)))
+(define :number (p/map (compose string->number list->string) (p/some :digit)))
 
 
 ;;; ---------- A simple calculator parser/evaluator ----------
+(module+ calc
+  (provide (all-defined-out))
+
+  (define :atom (p/alt :number))
+
+  (define (:expr-at prec) ((p/ops :atom op-table) prec))
+
+  ;; op-parse: parser (int, Expr -> parser Expr)
+  (define (infix-op func assoc parse)
+    (define (p-rhs prec lhs) (p/map (curry func lhs) (:expr-at prec)))
+    (op assoc (p/replace p-rhs parse)))
+
+  (define op-table
+    (hash
+      6 (set
+          (infix-op + 'l (p/string "+"))
+          (infix-op - 'l (p/string "-")))
+      7 (set
+          (infix-op * 'l (p/string "*"))
+          (infix-op / 'l (p/string "/")))))
+
+  (define :expr (:expr-at 0)))
 
 
 ;;; ---------- Concrete syntax ----------
