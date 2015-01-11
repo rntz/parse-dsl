@@ -11,6 +11,36 @@ Patterns
 Field patterns
    fp ::= x | x : p
 
+Parsers
+NB. this is essentially a very dense monad comprehension syntax!
+    v ::= v "|" v                   # alternation
+        | p:v_1 v_2                 # matches p against result of v_1 and runs v_2
+        | v_1 v_2                   # runs v_1 then v_2, giving results of v_2
+        | -> e                      # pure/return
+        | if e                      # guard
+        | (v)                       # parentheses for precedence
+        | case v_1 ("|" p -> v)*    # case analysis
+        | error e
+        | v* | v+
+        # is this (optional v)? or (option Nothing (Just <$> v))? or what?
+        | v?
+
+        # Bundles all bound variables in v into a dict.
+        # eg. {x:int y:int} parses "0 2" into dict {x: 0, y: 2}
+        # not convinced of the utility of this.
+        | {v}
+
+Open question: how to allow use of parser-combinators/meta-operators?
+
+Note that
+    (x:int int)*
+should warn about unused variable x, and:
+    (x:int int)* -> x
+should complain that x isn't in scope.
+
+----------
+# OLD VERSION
+
 Value parsers
 this is just monadic parser-combinator land!
     v ::= {r}               # embeds a record parser r

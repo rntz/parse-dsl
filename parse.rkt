@@ -109,9 +109,9 @@
 ;;; Convenience functions
 (define (parse parser str #:eof [eof #f])
   (when eof (set! parser (p/first parser p/eof)))
-  (for/list ([result (parser (string->list str))])
+  (for/list ([result (parser (sequence->stream str))])
     (match-define (list x rest) result)
-    (list x (list->string rest))))
+    (list x (list->string (stream->list rest)))))
 
 
 ;;; ---------- Parser constructors ----------
@@ -119,7 +119,7 @@
 
 (define ((p/error msg . args) s)
   ;; for now, just a debugging aid, since we're using naive parser-combinators
-  (printf "parse error: ~a\n" (apply format msg args))
+  ;; (printf "parse error: ~a\n" (apply format msg args))
   empty-stream)
 
 (define p/record record-parser-parser)
@@ -303,10 +303,15 @@
 ;;; ---------- Some convenient builtin parsers ----------
 ;;; naming convention: parsers begin with ":"
 
+(define :ws  (p/satisfy char-whitespace?))
+(define :ws* (p/many (p/satisfy char-whitespace?)))
+(define :ws+ (p/some (p/satisfy char-whitespace?)))
+
+(define (p/token p) (p/between :ws* :ws* p))
+
 (define :ident-start (p/satisfy char-alphabetic?))
 (define :ident-mid
-  (p/satisfy
-    (lambda (x) (or (char-alphabetic? x) (char-numeric? x) (equal? x #\_)))))
+  (p/satisfy (or/c char-alphabetic? char-numeric? (curry char=? #\_))))
 (define :ident
   (p/map (compose string->symbol list->string cons)
     :ident-start (p/many :ident-mid)))
@@ -320,12 +325,13 @@
   (provide (all-defined-out))
 
   (define :expr (p/delay (:expr-at 0)))
-  (define :atom (p/alt :number (p/parens :expr)))
+  (define :atom (p/token (p/alt :number (p/parens :expr))))
   (define (:expr-at prec) ((p/ops :atom op-table) prec))
 
   ;; op-parse: parser (int, Expr -> parser Expr)
   (define (infix-op func assoc parse)
-    (define (p-rhs prec lhs) (p/map (curry func lhs) (:expr-at prec)))
+    (define (p-rhs prec lhs)
+      (p/map (curry list (object-name func) lhs) (:expr-at prec)))
     (op assoc (p/replace p-rhs parse)))
 
   (define op-table
