@@ -21,6 +21,8 @@ Patterns, L (for left-hand-side)
         | "[" L,* "]" | "[" L,* "|" L "]"
         | B             # can embed a binding parser as "parse the whole stream"
         | B ++ P        # ... or as "parse a prefix, and match the rest to P"
+        | L and L       # bind disjoint vars
+        | L or L        # bind same vars
 
 Really we have a family of parsers indexed by what structure they yield!
 This structure's "signature" is known statically:
@@ -69,6 +71,7 @@ yeah, you probably can, it might involve subtyping though, look into it
 variables would range over contexts, I guess
 (contexts are just substitutions-from-empty)
 this is going to take some work to figure out; delay this for now!
+look for "syntactic category" and "calculus of explicit substitutions"
     S ::= drop X
         | S o S         # composition
         | {X=E,*}       # simultaneous replacement
