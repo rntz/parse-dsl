@@ -1,18 +1,101 @@
 Names X ::=
 Exprs E ::= # just use racket expressions
 
+TODO: make parsers a special-case of patterns. how is this possible?
+in particular, patterns export a signature of bound variables
+parsers just give back a value!
+
+patterns either match or fail to match their entire input, binding variables if they match
+parsers generalize this by matching a prefix
+could split into binding-parsers and value-parsers again?
+parsers also traditionally allowed to succeed in multiple ways, whereas patterns match at most one way
+could just lift this restriction
+
+could also split patterns into binding-patterns, value-patterns, non-value-patterns
+binding-pattern: pattern
+value-pattern: function w/ implicit argument
+non-value-pattern: predicate
+
+Patterns, L (for left-hand-side)
+    L ::= X | _ | {FL,*}
+        | "[" L,* "]" | "[" L,* "|" L "]"
+        | B             # can embed a binding parser as "parse the whole stream"
+        | B ++ P        # ... or as "parse a prefix, and match the rest to P"
+
+Really we have a family of parsers indexed by what structure they yield!
+This structure's "signature" is known statically:
+
+    binding-parsers: type context
+    value parser: type
+    no-value parser: no info
+
+Really, a no-value parser is just a binding-parser that yields an empty context!
+
+Operations on all parsers, P (P here a meta-meta-variable)
+    P ::= P "|" P | fail        # alternative
+        | &P                    # lookahead, or PEG's "and-predicate"
+        | X                     # variable whose type is an appropriate parser
+        | case V (of A -> P)*   # case-analysis of a value
+        | "(" P ")"
+
+Operations on binding parsers
+    B ::= V:P       # match a pattern against result of value parser
+        | B B       # concatenation - must bind disjoint vars
+
+        # S is a substitution. don't know what those should look like, though.
+        | B under S
+
+        # the following never bind variables, so are always no-value parsers
+        | ignore P  # runs P, binds no variables.
+        | if E      # guard. same as "case -> E of true -> unit".
+        | N?        # optionality
+        | !N        # negation
+        | unit      # always succeeds, binding nothing
+
+No-value parsers
+    N ::= B             # where B binds no variables
+
+Operations on value parsers
+    V ::= B V           # dependent catenation (V can see vars bound in B)
+        | do E          # evaluate E & run resulting parser
+        | -> E          # result is evaluation of E; applicative "pure"
+        | V"*" | V"+"   # iteration
+        # maybe want a keyword here? "?N"?
+        | N             # a no-value parser is a value parser that yields unit
+
+Substitutions! (very speculative) (do these form Arrows? I think so!)
+Betcha you can construct a lambda-calculus of substitutions!
+yeah, you probably can, it might involve subtyping though, look into it
+variables would range over contexts, I guess
+(contexts are just substitutions-from-empty)
+this is going to take some work to figure out; delay this for now!
+    S ::= drop X
+        | S o S         # composition
+        | {X=E,*}       # simultaneous replacement
+        | S, S          # union of two substitutions from same dom to disjoint codom
+        | empty
+
+    S_1 : A -> B    S_2 : A -> C    B,C disjoint
+    --------------------------------------------
+        S_1, S_2 : A -> B,C
+
+----------
 Patterns
+NB. could be thought of as 'parsers' generalized to other datatypes.
+(except they bind variables)
     P ::= X
         | _
         | {FP,*}            # record pattern
         | "[" P,* "]"       # list pattern
         | "[" P,* "|" P "]" # list pattern with tail
+        | stream V          # embed parser
 
 Field patterns
    FP ::= X | X : P
 
 Parsers
 NB. this is essentially a very dense monad(-ish) comprehension syntax!
+
     V ::= V "|" V                   # alternation
         # alternately: V or V
         | V_1:P V_2                 # matches P against result of V_1 and runs V_2
@@ -20,8 +103,8 @@ NB. this is essentially a very dense monad(-ish) comprehension syntax!
         | -> E                      # pure/return
         # alternately: "[" E "]"
         | if E                      # guard
-        | (V)                       # parentheses for precedence
-        | case V_1 ("of" p -> V)*   # case analysis
+        | "(" V ")"                 # parentheses for precedence
+        | case V_1 (of P -> V)*   # case analysis
         | error E
         | V* | V+
         # is this (optional v)? or (option Nothing (Just <$> v))? or what?
@@ -30,12 +113,38 @@ NB. this is essentially a very dense monad(-ish) comprehension syntax!
 
         | do E                      # evaluate E and run the resulting parser
         # alternately: @E
+        | X                         # run parser named X
 
         # Bundles all bound variables in v into a dict.
         # eg. {x:int y:int} parses "0 2" into dict {x: 0, y: 2}
         # not convinced of the utility of this.
         | {V}
 
+PRECEDENCE VERSION
+    V ::= Valt "|" V
+        | Valt
+        | case V (of P -> V)*
+ Valt ::= Vfac Valt | Vone:P Valt | Vfac
+ Vfac ::= -> E | do E | error E | if E
+        | Vone
+ Vone ::= Vatom | Vone* | Vone+ | Vone?
+Vatom ::= "(" V ")" | X
+
+PRECEDENCE TABLE
+notation:
+    V.n = parse V at precedence n
+    V^  = parse at our precedence + 1
+default: parse at our precedence.
+
+    2       V^ "|" V | case V^ (of P -> V^)*
+    4       V^ V | V.8:P V | (V^ +)* V^
+    6       -> E | do E | error E | if E
+    8       V"*" | V"+" | V"?"
+   10       "(" V.0 ")" | X
+
+problem: doesn't handle left-associativity very well.
+
+----------
 Open question: how to allow use of parser-combinators/meta-operators?
 
 Note that
